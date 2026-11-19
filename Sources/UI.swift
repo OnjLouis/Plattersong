@@ -136,6 +136,8 @@ final class SettingsWindow: NSWindow {
     private let bass = MixSlider()
     private let mid = MixSlider()
     private let treble = MixSlider()
+    private let readPitch = MixSlider()
+    private let writePitch = MixSlider()
     private let shortcut = NSButton()
     private let feedback = NSPopUpButton()
     private let login = NSButton(checkboxWithTitle: "Open at login", target: nil, action: nil)
@@ -270,7 +272,7 @@ final class SettingsWindow: NSWindow {
     }
 
     private func makeWindow() {
-        window = SettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 490),
+        window = SettingsWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 546),
                                 styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "Plattersong Settings"
         window.isReleasedWhenClosed = false
@@ -300,18 +302,22 @@ final class SettingsWindow: NSWindow {
         row("Physical disk", diskPicker)
         setup(enabled, "Enable this disk", #selector(mixChanged), "Include this disk when monitoring is on.")
         stack.addArrangedSubview(enabled)
-        let sliders: [(MixSlider, String, Int, (Int) -> String)] = [
-            (volume, "Volume", 0, { "\($0) percent" }),
-            (pan, "Pan", -100, { $0 == 0 ? "Center" : "\($0 < 0 ? "Left" : "Right") \(abs($0)) percent" }),
-            (bass, "Bass", 0, Self.eqValue), (mid, "Midrange", 0, Self.eqValue), (treble, "Treble", 0, Self.eqValue)
+        let sliderKeys = "Arrow keys adjust by one step. Page Up and Page Down adjust by ten. Home and End set the endpoints."
+        let pitchRange = "50 percent is lowest, 100 percent is the original pitch, and 200 percent is highest."
+        let sliders: [(MixSlider, String, ClosedRange<Int>, (Int) -> String, String)] = [
+            (volume, "Volume", 0...100, Self.percent, ""),
+            (pan, "Pan", -100...100, { $0 == 0 ? "Center" : "\($0 < 0 ? "Left" : "Right") \(abs($0)) percent" }, ""),
+            (bass, "Bass", 0...100, Self.eqValue, ""), (mid, "Midrange", 0...100, Self.eqValue, ""),
+            (treble, "Treble", 0...100, Self.eqValue, ""),
+            (readPitch, "Read pitch", Mix.pitchRange, Self.percent, "Change only this disk's read click. " + pitchRange),
+            (writePitch, "Write pitch", Mix.pitchRange, Self.percent, "Change only this disk's write click. " + pitchRange)
         ]
-        for (slider, name, min, description) in sliders {
-            slider.minValue = Double(min)
-            slider.maxValue = 100
+        for (slider, name, range, description, help) in sliders {
+            slider.minValue = Double(range.lowerBound)
+            slider.maxValue = Double(range.upperBound)
             slider.isContinuous = true
             slider.describe = description
-            setup(slider, name, #selector(mixChanged),
-                  "Arrow keys adjust by one step. Page Up and Page Down adjust by ten. Home and End set the endpoints.")
+            setup(slider, name, #selector(mixChanged), help.isEmpty ? sliderKeys : help + " " + sliderKeys)
             let value = NSTextField(labelWithString: "")
             value.widthAnchor.constraint(equalToConstant: 140).isActive = true
             value.setAccessibilityElement(false)
@@ -320,7 +326,8 @@ final class SettingsWindow: NSWindow {
         }
         button(previewRead, "Preview Read", #selector(tryRead), "Hear the read sound with this disk's current mix.")
         button(previewWrite, "Preview Write", #selector(tryWrite), "Hear the write sound with this disk's current mix.")
-        button(reset, "Reset Mix", #selector(resetMix), "Restore the default volume, pan and EQ for this disk.")
+        button(reset, "Reset Mix", #selector(resetMix),
+               "Restore this disk's default volume, pan, EQ, read pitch and write pitch without disabling it.")
         stack.addArrangedSubview(NSStackView(views: [previewRead, previewWrite, reset]))
         button(shortcut, "Change Shortcut...", #selector(changeShortcut), "Record a global shortcut with at least two modifiers.")
         let clear = NSButton()
@@ -341,7 +348,7 @@ final class SettingsWindow: NSWindow {
         status.setAccessibilityLabel("Monitoring status")
         stack.addArrangedSubview(status)
         status.widthAnchor.constraint(lessThanOrEqualTo: width, constant: -40).isActive = true
-        let order: [NSView] = [diskPicker, enabled, volume, pan, bass, mid, treble, previewRead, previewWrite,
+        let order: [NSView] = [diskPicker, enabled, volume, pan, bass, mid, treble, readPitch, writePitch, previewRead, previewWrite,
                                reset, shortcut, clear, feedback, login, start, close]
         for (i, view) in order.enumerated() { view.nextKeyView = order[(i + 1) % order.count] }
         window.focusOrder = order
@@ -350,12 +357,13 @@ final class SettingsWindow: NSWindow {
     }
 
     private var levelLabels: [NSTextField] = []
+    private static func percent(_ value: Int) -> String { "\(value) percent" }
     private static func eqValue(_ percent: Int) -> String {
         let db = Double(percent - 50) * 12 / 50
         if db == 0 { return "Flat, 0 dB" }
         return "\(db > 0 ? "Plus" : "Minus") \(String(format: "%.2f", abs(db))) dB"
     }
-    private var sliders: [MixSlider] { [volume, pan, bass, mid, treble] }
+    private var sliders: [MixSlider] { [volume, pan, bass, mid, treble, readPitch, writePitch] }
 
     private func updateDisks(_ next: [Disk]) {
         guard next != disks else { return }
@@ -372,8 +380,11 @@ final class SettingsWindow: NSWindow {
     private func refreshSelection() {
         let mix = diskID.flatMap { prefs.mixes[$0] } ?? Mix()
         enabled.state = mix.enabled ? .on : .off
-        for (slider, value) in zip(sliders, [mix.volume, mix.pan, mix.bass, mix.mid, mix.treble]) { slider.integerValue = value }
-        for control in [enabled, volume, pan, bass, mid, treble, previewRead, previewWrite, reset] as [NSControl] {
+        for (slider, value) in zip(sliders, [mix.volume, mix.pan, mix.bass, mix.mid, mix.treble, mix.readPitch, mix.writePitch]) {
+            slider.integerValue = value
+            slider.isEnabled = diskID != nil
+        }
+        for control in [enabled, previewRead, previewWrite, reset] {
             control.isEnabled = diskID != nil
         }
         updateValues()
@@ -419,7 +430,8 @@ final class SettingsWindow: NSWindow {
     @objc private func mixChanged() {
         guard let id = diskID else { return }
         prefs.mixes[id] = Mix(enabled: enabled.state == .on, volume: volume.integerValue, pan: pan.integerValue,
-                              bass: bass.integerValue, mid: mid.integerValue, treble: treble.integerValue)
+                              bass: bass.integerValue, mid: mid.integerValue, treble: treble.integerValue,
+                              readPitch: readPitch.integerValue, writePitch: writePitch.integerValue)
         updateValues()
         refreshStatus()
         save()
@@ -572,7 +584,7 @@ final class SettingsWindow: NSWindow {
     private func runUISmoke() throws {
         let fixture = Disk(id: "fixture", bsd: "disk99", model: "Test Disk")
         updateDisks([fixture])
-        try require(window.focusOrder.count == 16, "16 controls in key order")
+        try require(window.focusOrder.count == 18, "18 controls in key order")
         for control in window.focusOrder {
             try require(!(control.accessibilityLabel() ?? "").isEmpty, "label for \(type(of: control))")
             try require(!(control.accessibilityHelp() ?? "").isEmpty, "hint for \(type(of: control))")
@@ -598,6 +610,35 @@ final class SettingsWindow: NSWindow {
         try require(volume.integerValue == 31 && volume.accessibilityValueDescription() == "31 percent", "spoken slider value")
         updateDisks([fixture])
         try require(window.firstResponder === volume && diskID == fixture.id, "unchanged refresh preserves focus and selection")
+        let other = Disk(id: "other", bsd: "disk98", model: "Other Disk")
+        let otherMix = Mix(enabled: true, readPitch: 73, writePitch: 118)
+        prefs.mixes[other.id] = otherMix
+        updateDisks([fixture, other])
+        enabled.state = .on
+        try require(window.makeFirstResponder(readPitch), "focus Read pitch")
+        key(kVK_End)
+        key(kVK_PageDown)
+        try require(readPitch.accessibilityRole() == .slider && readPitch.accessibilityLabel() == "Read pitch" &&
+                    readPitch.accessibilityValueDescription() == "190 percent" &&
+                    readPitch.accessibilityHelp()?.contains("read click") == true &&
+                    prefs.mixes[fixture.id]?.readPitch == 190 && writePitch.integerValue == 100, "read pitch keyboard and help")
+        key(kVK_Tab)
+        try require(window.firstResponder === writePitch, "Tab from Read pitch to Write pitch")
+        key(kVK_Home)
+        key(kVK_UpArrow)
+        try require(writePitch.accessibilityRole() == .slider && writePitch.accessibilityLabel() == "Write pitch" &&
+                    writePitch.accessibilityValueDescription() == "51 percent" &&
+                    writePitch.accessibilityHelp()?.contains("write click") == true &&
+                    prefs.mixes[fixture.id]?.writePitch == 51 && readPitch.integerValue == 190, "write pitch keyboard and help")
+        diskPicker.selectItem(at: 1)
+        selectionChanged()
+        try require(readPitch.integerValue == 73 && writePitch.integerValue == 118, "other disk has its own pitches")
+        diskPicker.selectItem(at: 0)
+        selectionChanged()
+        try require(readPitch.integerValue == 190 && writePitch.integerValue == 51, "reselection restores both pitches")
+        reset.performClick(nil)
+        try require(prefs.mixes[fixture.id] == Mix(enabled: true) && prefs.mixes[other.id] == otherMix &&
+                    readPitch.integerValue == 100 && writePitch.integerValue == 100, "Reset Mix restores both pitches for this disk only")
         let testShortcut = Shortcut(key: UInt32(kVK_F18), modifiers: UInt32(controlKey | shiftKey | cmdKey),
                                     display: "Control+Shift+Command+F18")
         try require(global.install(testShortcut), "register global shortcut")
@@ -607,7 +648,7 @@ final class SettingsWindow: NSWindow {
         try require(global.install(nil), "unregister global shortcut")
         key(kVK_ANSI_W, flags: .command)
         try require(!window.isVisible, "Command+W closes settings")
-        print("PASS: 16 control names, native roles, Tab, Shift-Tab, slider keyboard value and refresh focus")
+        print("PASS: 18 control names, native roles, Tab, Shift-Tab, pitch keyboard and help, per-disk reselection and reset")
         print("PASS: global shortcut reservation, collision and release; Command+W hides settings")
         global.close()
         exit(0)

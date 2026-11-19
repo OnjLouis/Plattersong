@@ -6,12 +6,43 @@ import Foundation
 import IOKit
 
 struct Mix: Codable, Equatable {
+    static let pitchRange = 50...200
+    static let defaultPitch = 100
+
     var enabled = false
     var volume = 30
     var pan = 0
     var bass = 50
     var mid = 50
     var treble = 50
+    var readPitch = defaultPitch
+    var writePitch = defaultPitch
+
+    init(enabled: Bool = false, volume: Int = 30, pan: Int = 0, bass: Int = 50, mid: Int = 50,
+         treble: Int = 50, readPitch: Int = defaultPitch, writePitch: Int = defaultPitch) {
+        self.enabled = enabled
+        self.volume = volume
+        self.pan = pan
+        self.bass = bass
+        self.mid = mid
+        self.treble = treble
+        self.readPitch = Self.clampPitch(readPitch)
+        self.writePitch = Self.clampPitch(writePitch)
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(enabled: values.decode(Bool.self, forKey: .enabled),
+                      volume: values.decode(Int.self, forKey: .volume), pan: values.decode(Int.self, forKey: .pan),
+                      bass: values.decode(Int.self, forKey: .bass), mid: values.decode(Int.self, forKey: .mid),
+                      treble: values.decode(Int.self, forKey: .treble),
+                      readPitch: values.decodeIfPresent(Int.self, forKey: .readPitch) ?? Self.defaultPitch,
+                      writePitch: values.decodeIfPresent(Int.self, forKey: .writePitch) ?? Self.defaultPitch)
+    }
+
+    private static func clampPitch(_ value: Int) -> Int {
+        clamp(value, pitchRange.lowerBound, pitchRange.upperBound)
+    }
 
     static func clamp(_ value: Int, _ lower: Int = 0, _ upper: Int = 100) -> Int {
         min(upper, max(lower, value))
@@ -43,7 +74,7 @@ enum Click {
     static let stagger = rate * 4 / 1_000
     static let batchFrames = frames + 2 * stagger
 
-    // Port of Sensor Readout 6.6.1's three-band, stereo disk click.
+    // Keep each click's default tone and duration when its pitch is 100 percent.
     static func synthesize(_ mix: Mix, write: Bool) -> [Int16] {
         let pan = Double(Mix.clamp(mix.pan, -100)) / 100
         let angle = (1 + pan * (2 - abs(pan))) * Double.pi / 4
@@ -54,7 +85,7 @@ enum Click {
             pow(10, Double(Mix.clamp(position) - 50) * 12 / 50 / 20)
         }
         let bass = gain(mix.bass), mid = gain(mix.mid), treble = gain(mix.treble)
-        let pitch = write ? 0.68 : 1
+        let pitch = (write ? 0.68 : 1) * Double(write ? mix.writePitch : mix.readPitch) / Double(Mix.defaultPitch)
         var pcm = [Int16](repeating: 0, count: frames * 2)
         for frame in 0..<frames {
             let phase = 2 * Double.pi * pitch * Double(frame) / Double(rate)

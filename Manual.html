@@ -18,12 +18,15 @@
 </ul></nav>
 <main>
 <h2 id="changelog">Changelog</h2>
+<p>1.0.1: Adjust the read and write pitch independently for each disk, so you can tell more drives apart by ear.</p>
 <p>1.0.0: Initial release.</p>
 <h2 id="start">Getting Started</h2>
 <p>Move Plattersong to Applications and open it. In Settings, choose a physical disk, enable it and choose Start Monitoring. Close Settings when finished. Plattersong stays in the menu bar and remembers whether monitoring was on or off. Closing Settings does not stop it; Quit Plattersong does.</p>
 <p>Plattersong monitors physical disks whose drivers expose read and write counters. It does not show file names or track which app is responsible. Volume partitions sharing one disk have one sound. Cached reads and delayed writes may not trigger at the same time as the operation in an app. Network shares and disk images are not monitored.</p>
 <h2 id="mix">Disk Sounds And Controls</h2>
-<p>Each disk has its own enable setting, volume, stereo pan, bass, midrange and treble. Adjust EQ around the flat midpoint to distinguish disks. Start with Preview Read and Preview Write, then choose Start Monitoring. Reset Mix restores that disk's volume, pan and EQ without disabling it.</p>
+<p>Each disk has its own enable setting, volume, stereo pan, bass, midrange and treble. Adjust EQ around the flat midpoint to distinguish disks.</p>
+<p>Use Read pitch and Write pitch to change the tone of each click independently. Both sliders go from 50 to 200 percent, with 100 percent keeping the original pitch. Use Preview Read and Preview Write to hear the difference, then choose Start Monitoring. Adjustments also apply while monitoring.</p>
+<p>Reset Mix restores the selected disk's volume, pan, EQ and both pitches without disabling it or affecting other disks.</p>
 <p>Disconnecting an external disk does not stop monitoring other disks. When the same disk reconnects, Plattersong resumes using its saved mix. Some adapters do not expose a serial number or media identifier; reconnect those to the same port to retain their mix.</p>
 <h2 id="keyboard">Keyboard And VoiceOver</h2>
 <ul>

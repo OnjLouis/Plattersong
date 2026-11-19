@@ -39,6 +39,22 @@ func runSelfTests() throws {
     prefs.mixes["physical"] = boosted
     let restored = try JSONDecoder().decode(Preferences.self, from: JSONEncoder().encode(prefs))
     try require(restored.listening && restored.shortcut == nil && restored.mixes == prefs.mixes, "settings round trip")
+    let legacy = Data(#"{"listening":true,"mixes":{"physical":{"enabled":true,"volume":61,"pan":-20,"bass":40,"mid":45,"treble":60}},"feedback":2}"#.utf8)
+    let upgraded = try JSONDecoder().decode(Preferences.self, from: legacy)
+    try require(upgraded.listening && upgraded.feedback == 2 &&
+                upgraded.mixes["physical"] == Mix(enabled: true, volume: 61, pan: -20, bass: 40, mid: 45, treble: 60),
+                "old preferences retain their mix and gain default pitches")
+    let pitchedRead = Click.Pair(Mix(readPitch: 135))
+    try require(pitchedRead.read != pair.read && pitchedRead.write == pair.write && pitchedRead.read.count == pair.read.count,
+                "read pitch changes only read clicks")
+    let pitchedWrite = Click.Pair(Mix(writePitch: 65))
+    try require(pitchedWrite.write != pair.write && pitchedWrite.read == pair.read && pitchedWrite.write.count == pair.write.count,
+                "write pitch changes only write clicks")
+    let savedPitches = Mix(readPitch: 135, writePitch: 65)
+    let restoredPitches = try JSONDecoder().decode(Mix.self, from: JSONEncoder().encode(savedPitches))
+    try require(restoredPitches == savedPitches &&
+                Mix(readPitch: Int.min, writePitch: Int.max) == Mix(readPitch: 50, writePitch: 200),
+                "independent pitch persistence and limits")
     try require(Updater.parts("1.0.1") == [1, 0, 1] && Updater.parts("1.01.0") == nil &&
                 Updater.parts("1.0.1-beta") == nil, "canonical release versions")
     let valid = Updater.GitHubRelease.Asset(name: "Plattersong-1.0.1-macOS.zip", size: 100,
@@ -53,7 +69,7 @@ func runSelfTests() throws {
     }
     try reject { try Updater.validateEntries("Plattersong.app/Contents/MacOS/Plattersong\n../escape", "") }
     try reject { try Updater.validateEntries("Plattersong.app/Contents/MacOS/Plattersong", "lrwxrwxrwx example") }
-    print("PASS: counter baselines, read/write timing, stereo, EQ, persistence, catalog and archive rejection")
+    print("PASS: counter baselines, read/write timing, stereo, EQ, independent pitch, settings migration, catalog and archive rejection")
 }
 
 func require(_ condition: Bool, _ name: String) throws {

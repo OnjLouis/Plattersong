@@ -2,7 +2,8 @@
 
 Hear physical disk reads and writes as short, adjustable stereo clicks.
 Plattersong runs in the menu bar and provides native keyboard and VoiceOver
-controls for each disk's volume, pan and three-band EQ.
+controls for each disk's volume, pan, three-band EQ, and independent read and
+write pitch.
 
 Requires macOS 13 or later. The universal app supports Apple Silicon and Intel.
 See [the manual](Manual.html) for set-up, shortcuts, login and updates.
